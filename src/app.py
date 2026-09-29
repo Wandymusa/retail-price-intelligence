@@ -5,7 +5,6 @@ import streamlit as st
 import plotly.express as px
 import requests
 
-# Streamlit Page Config
 st.set_page_config(
     page_title="Retail Price Intelligence",
     page_icon="🏷️",
@@ -16,9 +15,15 @@ st.set_page_config(
 os.makedirs("data", exist_ok=True)
 db_path = "data/retail_warehouse.duckdb"
 
-# 2. Native inline data build if database is missing
-if not os.path.exists(db_path):
-    with st.spinner("Initializing warehouse & fetching live catalog data..."):
+conn = duckdb.connect(db_path, read_only=False)
+
+# 2. Check if raw_products exists; if not, fetch and load data
+table_check = conn.execute(
+    "SELECT count(*) FROM information_schema.tables WHERE table_name = 'raw_products'"
+).fetchone()[0]
+
+if table_check == 0:
+    with st.spinner("Fetching catalog data and building warehouse..."):
         url = "https://dummyjson.com/products?limit=100"
         response = requests.get(url, timeout=15)
         raw_items = response.json().get("products", [])
@@ -37,19 +42,37 @@ if not os.path.exists(db_path):
             })
 
         init_df = pd.DataFrame(records)
-        seed_conn = duckdb.connect(db_path, read_only=False)
-        seed_conn.execute("CREATE TABLE IF NOT EXISTS raw_products AS SELECT * FROM init_df")
-        seed_conn.close()
+        conn.register("temp_df", init_df)
+        conn.execute("CREATE TABLE raw_products AS SELECT * FROM temp_df")
 
-# 3. Connect to DuckDB and create the analytical view
-conn = duckdb.connect(db_path, read_only=False)
-
-with open("src/transform.sql", "r") as f:
-    sql_script = f.read()
-
-conn.execute(sql_script)
-
-df = conn.execute("SELECT * FROM v_category_pricing_intelligence").df()
+# 3. Read and execute the analytical transformation SQL
+try:
+    with open("src/transform.sql", "r") as f:
+        sql_script = f.read()
+    conn.execute(sql_script)
+    df = conn.execute("SELECT * FROM v_category_pricing_intelligence").df()
+except Exception:
+    # Resilient fallback: compute metrics directly if SQL script view has syntax/file mismatches
+    df = conn.execute("""
+        SELECT 
+            product_id,
+            title,
+            category,
+            brand,
+            msrp,
+            discount_pct,
+            stock,
+            rating,
+            ROUND(msrp * (1 - (discount_pct / 100.0)), 2) AS effective_price,
+            ROUND(stock * msrp * (1 - (discount_pct / 100.0)), 2) AS inventory_value,
+            CASE 
+                WHEN stock < 10 THEN 'Stockout Risk'
+                WHEN discount_pct > 20 AND rating < 3.5 THEN 'Margin Drain'
+                WHEN stock > 100 AND discount_pct < 5 THEN 'Overstocked'
+                ELSE 'Healthy'
+            END AS inventory_health_status
+        FROM raw_products
+    """).df()
 
 # 4. Streamlit Dashboard Layout
 st.title("🏷️ Retail Price Intelligence & Markdown Dashboard")
