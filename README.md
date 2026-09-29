@@ -23,3 +23,7 @@ Retail operators face margin loss through misaligned discount strategies and cap
 
 ```text
 [REST API] ──(Requests & Pandas ETL)──> [DuckDB Warehouse] ──(SQL Transformation Engine)──> [Streamlit BI Dashboard]
+git clone [https://github.com/Wandymusa/retail-price-intelligence.git](https://github.com/Wandymusa/retail-price-intelligence.git)
+cd retail-price-intelligence
+pip3 install -r requirements.txt
+python3 -m streamlit run src/app.py
