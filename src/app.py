@@ -1,17 +1,9 @@
 import os
-import subprocess
 import duckdb
 import pandas as pd
 import streamlit as st
 import plotly.express as px
-
-# 1. Ensure the data directory exists
-os.makedirs("data", exist_ok=True)
-db_path = "data/retail_warehouse.duckdb"
-
-# 2. Run the extraction pipeline if the database is missing
-if not os.path.exists(db_path):
-    subprocess.run(["python3", "src/pipeline.py"], check=True)
+import requests
 
 # Streamlit Page Config
 st.set_page_config(
@@ -19,6 +11,35 @@ st.set_page_config(
     page_icon="🏷️",
     layout="wide"
 )
+
+# 1. Ensure storage directory exists
+os.makedirs("data", exist_ok=True)
+db_path = "data/retail_warehouse.duckdb"
+
+# 2. Native inline data build if database is missing
+if not os.path.exists(db_path):
+    with st.spinner("Initializing warehouse & fetching live catalog data..."):
+        url = "https://dummyjson.com/products?limit=100"
+        response = requests.get(url, timeout=15)
+        raw_items = response.json().get("products", [])
+
+        records = []
+        for item in raw_items:
+            records.append({
+                "product_id": int(item.get("id")),
+                "title": str(item.get("title")),
+                "category": str(item.get("category")),
+                "brand": str(item.get("brand") or "Generic"),
+                "msrp": float(item.get("price")),
+                "discount_pct": float(item.get("discountPercentage", 0.0)),
+                "stock": int(item.get("stock", 0)),
+                "rating": float(item.get("rating", 0.0))
+            })
+
+        init_df = pd.DataFrame(records)
+        seed_conn = duckdb.connect(db_path, read_only=False)
+        seed_conn.execute("CREATE TABLE IF NOT EXISTS raw_products AS SELECT * FROM init_df")
+        seed_conn.close()
 
 # 3. Connect to DuckDB and create the analytical view
 conn = duckdb.connect(db_path, read_only=False)
@@ -44,7 +65,7 @@ col4.metric("Flagged SKU Risks", f"{risk_count:,}")
 
 st.divider()
 
-# Charts
+# Visualizations
 row1_col1, row1_col2 = st.columns(2)
 
 with row1_col1:
@@ -69,7 +90,7 @@ with row1_col2:
     )
     st.plotly_chart(fig_bar, use_container_width=True)
 
-# Data Table Drill-Down
+# Data Drilldown Table
 st.subheader("High-Risk / Actionable SKUs")
 actionable_df = df[df['inventory_health_status'] != 'Healthy'][[
     "title", "category", "brand", "msrp", "discount_pct", "stock", "rating", "inventory_health_status"
