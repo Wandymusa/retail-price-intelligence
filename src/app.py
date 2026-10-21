@@ -1,3 +1,4 @@
+cat << 'EOF' > src/app.py
 import os
 import duckdb
 import pandas as pd
@@ -69,26 +70,26 @@ finally:
 
 # 4. Dashboard Header & Top KPIs
 st.title("🏷️ Retail Price Intelligence")
-st.caption("Automated category monitoring, discount spread analysis, and stockout risk mitigation")[cite: 1]
+st.caption("Automated category monitoring, discount spread analysis, and stockout risk mitigation")
 
-col1, col2, col3, col4 = st.columns(4)[cite: 1]
-col1.metric("Monitored SKUs", f"{len(df):,}")[cite: 1]
-col2.metric("Total Portfolio Value", f"${df['inventory_value'].sum():,.2f}")[cite: 1]
-col3.metric("Average Discount Depth", f"{df['discount_pct'].mean():.1f}%")[cite: 1]
-risk_count = len(df[df["inventory_health_status"] != "Healthy"])[cite: 1]
-col4.metric("Flagged SKU Risks", f"{risk_count:,}")[cite: 1]
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Monitored SKUs", f"{len(df):,}")
+col2.metric("Total Portfolio Value", f"${df['inventory_value'].sum():,.2f}")
+col3.metric("Average Discount Depth", f"{df['discount_pct'].mean():.1f}%")
+risk_count = len(df[df["inventory_health_status"] != "Healthy"])
+col4.metric("Flagged SKU Risks", f"{risk_count:,}")
 
-st.divider()[cite: 1]
+st.divider()
 
 # 5. Visualizations
-row1_col1, row1_col2 = st.columns(2)[cite: 1]
+row1_col1, row1_col2 = st.columns(2)
 
-with row1_col1:[cite: 1]
-    fig_scatter = px.scatter([cite: 1]
-        df,[cite: 1]
-        x="effective_price",[cite: 1]
-        y="discount_pct",[cite: 1]
-        size="stock",[cite: 1]
+with row1_col1:
+    fig_scatter = px.scatter(
+        df,
+        x="effective_price",
+        y="discount_pct",
+        size="stock",
         color="inventory_health_status",
         hover_name="title",
         title="Effective Price vs Discount Depth by Inventory Status",
@@ -139,3 +140,4 @@ st.dataframe(
     use_container_width=True,
     hide_index=True
 )
+EOF
