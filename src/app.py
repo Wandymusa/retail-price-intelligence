@@ -1,5 +1,4 @@
 import os
-import subprocess
 import duckdb
 import pandas as pd
 import streamlit as st
@@ -12,92 +11,84 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Ensure data directory & database exist
+# 2. Database paths & in-process data bootstrap
 DB_PATH = "data/retail_warehouse.duckdb"
 os.makedirs("data", exist_ok=True)
 
-if not os.path.exists(DB_PATH):
-    subprocess.run(["python3", "src/pipeline.py"], check=True)
 
-# 3. Connect to DuckDB and load data safely
+def run_pipeline_sync():
+    """Execute pipeline extraction and database ingestion in-process."""
+    from src.pipeline import fetch_catalog_data, clean_and_normalize, load_to_duckdb
+    raw_data = fetch_catalog_data()
+    cleaned_df = clean_and_normalize(raw_data)
+    load_to_duckdb(cleaned_df)
+
+
+if not os.path.exists(DB_PATH):
+    run_pipeline_sync()
+
+
+# 3. Safe DuckDB Connection and Query Handling
 @st.cache_resource
 def get_connection():
     return duckdb.connect(DB_PATH, read_only=False)
 
+
 conn = get_connection()
 
-# Execute query using an isolated cursor to avoid unclosed query lockups
+QUERY_SQL = """
+    SELECT 
+        id,
+        title,
+        category,
+        brand,
+        price,
+        discountPercentage AS discount_pct,
+        rating,
+        stock,
+        effective_price,
+        inventory_value,
+        CASE 
+            WHEN stock < 10 THEN 'Critical Stock'
+            WHEN discountPercentage > 25 THEN 'Deep Discount Risk'
+            ELSE 'Healthy'
+        END AS inventory_health_status
+    FROM raw_products
+"""
+
 cur = conn.cursor()
 try:
-    df = cur.execute("""
-        SELECT 
-            id,
-            title,
-            category,
-            brand,
-            price,
-            discountPercentage AS discount_pct,
-            rating,
-            stock,
-            effective_price,
-            inventory_value,
-            CASE 
-                WHEN stock < 10 THEN 'Critical Stock'
-                WHEN discountPercentage > 25 THEN 'Deep Discount Risk'
-                ELSE 'Healthy'
-            END AS inventory_health_status
-        FROM raw_products
-    """).df()
-except Exception as e:
-    # Fallback if raw_products does not exist yet
+    df = cur.execute(QUERY_SQL).df()
+except Exception:
     cur.close()
-    subprocess.run(["python3", "src/pipeline.py"], check=True)
+    run_pipeline_sync()
     cur = conn.cursor()
-    df = cur.execute("""
-        SELECT 
-            id,
-            title,
-            category,
-            brand,
-            price,
-            discountPercentage AS discount_pct,
-            rating,
-            stock,
-            effective_price,
-            inventory_value,
-            CASE 
-                WHEN stock < 10 THEN 'Critical Stock'
-                WHEN discountPercentage > 25 THEN 'Deep Discount Risk'
-                ELSE 'Healthy'
-            END AS inventory_health_status
-        FROM raw_products
-    """).df()
+    df = cur.execute(QUERY_SQL).df()
 finally:
     cur.close()
 
-# 4. Streamlit Dashboard Layout
+# 4. Dashboard Header & Top KPIs
 st.title("🏷️ Retail Price Intelligence")
-st.caption("Automated category monitoring, discount spread analysis, and stockout risk mitigation")
+st.caption("Automated category monitoring, discount spread analysis, and stockout risk mitigation")[cite: 1]
 
-# Top KPIs
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Monitored SKUs", f"{len(df):,}")
-col2.metric("Total Portfolio Value", f"${df['inventory_value'].sum():,.2f}")
-col3.metric("Average Discount Depth", f"{df['discount_pct'].mean():.1f}%")
-risk_count = len(df[df["inventory_health_status"] != "Healthy"])
-col4.metric("Flagged SKU Risks", f"{risk_count:,}")
+col1, col2, col3, col4 = st.columns(4)[cite: 1]
+col1.metric("Monitored SKUs", f"{len(df):,}")[cite: 1]
+col2.metric("Total Portfolio Value", f"${df['inventory_value'].sum():,.2f}")[cite: 1]
+col3.metric("Average Discount Depth", f"{df['discount_pct'].mean():.1f}%")[cite: 1]
+risk_count = len(df[df["inventory_health_status"] != "Healthy"])[cite: 1]
+col4.metric("Flagged SKU Risks", f"{risk_count:,}")[cite: 1]
 
-st.divider()
+st.divider()[cite: 1]
 
-# Charts
-row1_col1, row1_col2 = st.columns(2)
+# 5. Visualizations
+row1_col1, row1_col2 = st.columns(2)[cite: 1]
 
-with row1_col1:
-    fig_scatter = px.scatter(
-        df,
-        x="effective_price",
-        y="discount_pct",
-        size="stock",
+with row1_col1:[cite: 1]
+    fig_scatter = px.scatter([cite: 1]
+        df,[cite: 1]
+        x="effective_price",[cite: 1]
+        y="discount_pct",[cite: 1]
+        size="stock",[cite: 1]
         color="inventory_health_status",
         hover_name="title",
         title="Effective Price vs Discount Depth by Inventory Status",
@@ -107,8 +98,14 @@ with row1_col1:
     st.plotly_chart(fig_scatter, use_container_width=True)
 
 with row1_col2:
+    cat_summary = (
+        df.groupby("category")["inventory_value"]
+        .sum()
+        .reset_index()
+        .sort_values(by="inventory_value", ascending=False)
+    )
     fig_cat = px.bar(
-        df.groupby("category")["inventory_value"].sum().reset_index().sort_values(by="inventory_value", ascending=False),
+        cat_summary,
         x="category",
         y="inventory_value",
         title="Total Inventory Exposure by Category",
@@ -119,13 +116,26 @@ with row1_col2:
 
 st.divider()
 
-# Detailed SKU Table with Filters
+# 6. SKU Inventory Health Table with Multiselect
 st.subheader("SKU Inventory Health Table")
-selected_category = st.multiselect("Filter by Category", options=df["category"].unique(), default=df["category"].unique())
+selected_category = st.multiselect(
+    "Filter by Category",
+    options=df["category"].unique(),
+    default=df["category"].unique()
+)
 filtered_df = df[df["category"].isin(selected_category)]
 
 st.dataframe(
-    filtered_df[["title", "category", "brand", "price", "effective_price", "discount_pct", "stock", "inventory_health_status"]],
+    filtered_df[[
+        "title",
+        "category",
+        "brand",
+        "price",
+        "effective_price",
+        "discount_pct",
+        "stock",
+        "inventory_health_status",
+    ]],
     use_container_width=True,
     hide_index=True
 )
