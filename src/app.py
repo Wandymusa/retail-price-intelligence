@@ -18,7 +18,11 @@ os.makedirs("data", exist_ok=True)
 
 def run_pipeline_sync():
     """Execute pipeline extraction and database ingestion in-process."""
-    from src.pipeline import fetch_catalog_data, clean_and_normalize, load_to_duckdb
+    try:
+        from src.pipeline import fetch_catalog_data, clean_and_normalize, load_to_duckdb
+    except ModuleNotFoundError:
+        from pipeline import fetch_catalog_data, clean_and_normalize, load_to_duckdb
+
     raw_data = fetch_catalog_data()
     cleaned_df = clean_and_normalize(raw_data)
     load_to_duckdb(cleaned_df)
