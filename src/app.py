@@ -1,4 +1,3 @@
-cat << 'EOF' > src/app.py
 import os
 import duckdb
 import pandas as pd
@@ -140,4 +139,3 @@ st.dataframe(
     use_container_width=True,
     hide_index=True
 )
-EOF
