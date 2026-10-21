@@ -1,3 +1,10 @@
+# Retail Price Intelligence
+
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://retail-price-intelligence-myj9qtfqw72ga5yzsycxl2.streamlit.app)
+
+🔗 **Live Production Dashboard:** [retail-price-intelligence.streamlit.app](https://retail-price-intelligence-myj9qtfqw72ga5yzsycxl2.streamlit.app)
+
+Automated category monitoring, discount spread analysis, and stockout risk dashboard powered by DuckDB and Streamlit.
 # 🏷️ Automated Retail Price Intelligence & Markdown Analytics Engine
 
 An end-to-end data pipeline extracting retail catalog APIs, modeling product elasticity in DuckDB via analytical window functions, and serving operational inventory risk signals via an interactive Streamlit dashboard.
