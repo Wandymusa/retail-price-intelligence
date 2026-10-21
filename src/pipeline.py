@@ -1,20 +1,17 @@
 import os
+import requests
+import pandas as pd
+import duckdb
 from datetime import datetime, timezone
 
-import duckdb
-import pandas as pd
-import requests
-
-
-API_URL = "https://dummyjson.com/products?limit=0"
 DB_PATH = "data/retail_warehouse.duckdb"
+API_URL = "https://dummyjson.com/products?limit=100"
 
 
 def fetch_catalog_data():
-    """Extract product catalog from REST API with error handling."""
-    print("Fetching retail catalog data from API...")
+    """Fetch product records from the target e-commerce API."""
     try:
-        response = requests.get(API_URL, timeout=15)
+        response = requests.get(API_URL, timeout=10)
         response.raise_for_status()
         data = response.json()
         return data.get("products", [])
@@ -40,7 +37,7 @@ def clean_and_normalize(products):
 
     df["brand"] = df["brand"].fillna("Generic/Store Brand")
     df["stock"] = pd.to_numeric(df["stock"], errors="coerce").fillna(0).astype(int)
-    for column in ("price", "discountPercentage", "rating"):
+    for column in ["price", "discountPercentage", "rating"]:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
     df["effective_price"] = (
@@ -57,9 +54,12 @@ def load_to_duckdb(df):
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = duckdb.connect(DB_PATH)
     try:
-        conn.register("df_view", df)
-        conn.execute("CREATE OR REPLACE TABLE raw_products AS SELECT * FROM df_view")
-        row_count = conn.execute("SELECT COUNT(*) FROM raw_products").fetchone()[0]
+        cur = conn.cursor()
+        cur.register("df_view", df)
+        cur.execute("CREATE OR REPLACE TABLE raw_products AS SELECT * FROM df_view").fetchall()
+        cur.unregister("df_view")
+        row_count = cur.execute("SELECT COUNT(*) FROM raw_products").fetchone()[0]
+        cur.close()
         print(f"Successfully loaded {row_count} SKUs into {DB_PATH}")
     finally:
         conn.close()
